@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="card">
+        <div class="search">
+            <input type="text" placeholder="enter city name" spellcheck="false">
+            <button><img src="images/search.png"></button>
+        </div>
+        <div class="error">
+            <p>Invalid City Name</p>
+        </div>
+        <div class="weather">
+            <img class="weather-icon" src="images/rain.png" alt="Weather condition">
+            <h1 class="temp">22°C</h1>
+            <h2 class="city">New York</h2>
+            <button class="unit-toggle" type="button" aria-label="Switch to Fahrenheit">°C</button>
+            <div class="details">
+                <div class="col">
+                    <img src="images/humidity.png">
+                    <div>
+                        <p class="humidity">50%</p>
+                        <p>Humidity</p>
+                    </div>
+                </div>
+                <div class="col">
+                    <img src="images/wind.png">
+                    <div>
+                        <p class="wind">5 km/h</p>
+                        <p>Wind Speed</p>
+                    </div>
+                </div>
+            </div>
+            <section class="forecast" aria-label="5-day forecast">
+                <h3>5-day forecast</h3>
+                <div class="forecast-days"></div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = "YOUR_OPENWEATHER_API_KEY"
+        const apiUrl = "https://api.openweathermap.org/data/2.5/weather?units=metric&q="
+
+        const searchBox = document.querySelector(".search input");
+        const searchBtn = document.querySelector(".search button");
+        const weatherIcon = document.querySelector(".weather-icon");
+        const errorMessage = document.querySelector(".error");
+        const weather = document.querySelector(".weather");
+        const unitToggle = document.querySelector(".unit-toggle");
+        const forecastContainer = document.querySelector(".forecast");
+        const forecastDays = document.querySelector(".forecast-days");
+        let isCelsius = true;
+        let currentTemperature;
+        let forecastData = [];
+
+        const weatherImages = {
+            Clouds: "images/clouds.png",
+            Clear: "images/clear.png",
+            Rain: "images/rain.png",
+            Drizzle: "images/drizzle.png",
+            Snow: "images/snow.png",
+            Mist: "images/mist.png",
+            Smoke: "images/mist.png",
+            Haze: "images/mist.png",
+            Dust: "images/mist.png",
+            Fog: "images/mist.png",
+            Sand: "images/mist.png",
+            Ash: "images/mist.png",
+            Squall: "images/rain.png",
+            Thunderstorm: "images/rain.png"
+        };
+
+        function displayTemperature(celsius) {
+            return `${Math.round(isCelsius ? celsius : celsius * 9 / 5 + 32)}°${isCelsius ? "C" : "F"}`;
+        }
+
+        function renderForecast() {
+            forecastDays.replaceChildren();
+
+            forecastData.forEach((day) => {
+                const item = document.createElement("div");
+                item.className = "forecast-day";
+
+                const date = new Date(`${day.date}T12:00:00`);
+                const dayName = document.createElement("p");
+                dayName.className = "forecast-name";
+                dayName.textContent = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
+
+                const icon = document.createElement("img");
+                icon.src = weatherImages[day.condition] || "images/mist.png";
+                icon.alt = day.condition;
+
+                const temperature = document.createElement("p");
+                temperature.className = "forecast-temp";
+                temperature.textContent = displayTemperature(day.temperature);
+
+                item.append(dayName, icon, temperature);
+                forecastDays.append(item);
+            });
+        }
+
+        async function loadForecast(latitude, longitude, timezoneOffset) {
+            const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${latitude}&lon=${longitude}&units=metric&appid=${apiKey}`;
+            const response = await fetch(forecastUrl);
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || `Forecast request failed (${response.status}).`);
+            }
+
+            const dailyForecasts = new Map();
+            data.list.forEach((entry) => {
+                const localDate = new Date((entry.dt + timezoneOffset) * 1000).toISOString().slice(0, 10);
+                const localHour = new Date((entry.dt + timezoneOffset) * 1000).getUTCHours();
+                const current = dailyForecasts.get(localDate);
+
+                if (!current || Math.abs(localHour - 12) < Math.abs(current.hour - 12)) {
+                    dailyForecasts.set(localDate, {
+                        date: localDate,
+                        hour: localHour,
+                        temperature: entry.main.temp,
+                        condition: entry.weather[0].main
+                    });
+                }
+            });
+
+            forecastData = Array.from(dailyForecasts.values()).slice(0, 5);
+            renderForecast();
+            forecastContainer.style.display = "block";
+        }
+
+        async function checkWeather(city) {
+            const cityName = city.trim();
+            if (!cityName) {
+                errorMessage.style.display = "block";
+                weather.style.display = "none";
+                forecastContainer.style.display = "none";
+                return;
+            }
+
+            const response = await fetch(apiUrl + encodeURIComponent(cityName) + `&appid=${apiKey}`);
+            var data = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    errorMessage.style.display = "block";
+                    weather.style.display = "none";
+                    return;
+                }
+                console.error("Weather request failed:", data.message);
+                return;
+            }
+
+            errorMessage.style.display = "none";
+            document.querySelector(".city").innerHTML = data.name;
+            currentTemperature = data.main.temp;
+            document.querySelector(".temp").textContent = displayTemperature(currentTemperature);
+            document.querySelector(".humidity").innerHTML = data.main.humidity + "%";
+            document.querySelector(".wind").innerHTML = data.wind.speed + "km/h";
+            weather.style.display = "block";
+
+            const condition = data.weather[0].main;
+            weatherIcon.src = weatherImages[condition] || "images/mist.png";
+            weatherIcon.alt = condition;
+
+            forecastContainer.style.display = "none";
+            try {
+                await loadForecast(data.coord.lat, data.coord.lon, data.timezone);
+            } catch (error) {
+                console.error("Forecast request failed:", error);
+                forecastDays.textContent = "Forecast unavailable.";
+                forecastContainer.style.display = "block";
+            }
+        }
+
+        searchBtn.addEventListener("click", () => {
+            checkWeather(searchBox.value);
+        })
+
+        searchBox.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                checkWeather(searchBox.value);
+            }
+        });
+
+        unitToggle.addEventListener("click", () => {
+            isCelsius = !isCelsius;
+            document.querySelector(".temp").textContent = displayTemperature(currentTemperature);
+            unitToggle.textContent = isCelsius ? "°C" : "°F";
+            unitToggle.setAttribute("aria-label", `Switch to ${isCelsius ? "Fahrenheit" : "Celsius"}`);
+            renderForecast();
+        });
+
+    </script>
+
+</body>
+
+</html>
